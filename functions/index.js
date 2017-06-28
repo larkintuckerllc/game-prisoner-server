@@ -2,12 +2,13 @@
 
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
-admin.initializeApp(functions.config().firebase);
 const express = require('express');
 const cookieParser = require('cookie-parser')();
 const cors = require('cors')({origin: true});
-const app = express();
 
+const EMAIL = 'admin@game.prisoner';
+admin.initializeApp(functions.config().firebase);
+const app = express();
 const validateFirebaseIdToken = (req, res, next) => {
   if ((!req.headers.authorization || !req.headers.authorization.startsWith('Bearer ')) &&
       !req.cookies.__session) {
@@ -45,7 +46,10 @@ app.use(cors);
 app.use(cookieParser);
 app.use(validateFirebaseIdToken);
 app.get('/round', (req, res) => {
-  // TODO: VALIDATE WHICH USER
+  if (req.user.email !== EMAIL) {
+    res.status(403).send('Unauthorized');
+    return;
+  }
   // TODO: WORRY ABOUT EMPTY
   // TODO: WORRY ABOUT ODD
   // TODO: WORRY ABOUT DROPOUT
@@ -70,6 +74,10 @@ app.get('/round', (req, res) => {
   }); // GAMESTATE UPDATE
 });
 app.get('/score', (req, res) => {
+  if (req.user.email !== EMAIL) {
+    res.status(403).send('Unauthorized');
+    return;
+  }
   // TODO: VALIDATE WHICH USER
   // TODO: WORRY ABOUT EMPTY
   // TODO: WORRY ABOUT ODD
@@ -110,26 +118,44 @@ app.get('/score', (req, res) => {
     paired,
     selection
   ]) => {
+    let cooperate = 0;
+    let not = 0;
     const setScoreCommands = [];
     const joinedKeys = Object.keys(joined);
     // UPDATE SCORES
     for (let i = 0; i < joinedKeys.length; i += 1) {
       const joinedKey = joinedKeys[i];
       let score = joined[joinedKey];
-      if (!selection[joinedKey]) score += amount;
+      if (!selection[joinedKey]) {
+        score += amount;
+        not += 1;
+      } else {
+        cooperate += 1;
+      }
       if (selection[paired[joinedKey]]) score += otherAmount;
       setScoreCommands.push(admin.database().ref(`joined/${joinedKey}`).set(score));
     }
+    // RECORD ROUND
+    setScoreCommands.push(admin.database().ref('rounds').push({
+      amount,
+      otherAmount,
+      cooperate,
+      not,
+    }));
     Promise.all(setScoreCommands).then(() => admin.database().ref('gameState').set('SCORE').then(() => res.send({})));
   });
 });
 app.get('/game', (req, res) => {
-  // TODO: VALIDATE WHICH USER
+  if (req.user.email !== EMAIL) {
+    res.status(403).send('Unauthorized');
+    return;
+  }
   const setCommands = [];
   setCommands.push(admin.database().ref('selection').remove());
   setCommands.push(admin.database().ref('messages').remove());
   setCommands.push(admin.database().ref('paired').remove());
   setCommands.push(admin.database().ref('joined').remove());
+  setCommands.push(admin.database().ref('rounds').remove());
   Promise.all(setCommands).then(() => admin.database().ref('gameState').set('JOIN').then(() => res.send({})));
 });
 exports.app = functions.https.onRequest(app);

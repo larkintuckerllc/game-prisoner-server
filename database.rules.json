@@ -1,6 +1,40 @@
 {
   "rules": {
-    ".read": "auth != null",
-    ".write": "auth != null"
+    "amount": {
+      ".read": "auth !== null",
+      ".write": "auth !== null && auth.email === 'admin@game.prisoner'"
+    },
+    "gameState": {
+      ".read": "auth !== null",
+      ".write": "auth !== null && auth.email === 'admin@game.prisoner'"
+    },
+    "joined": {
+      ".read": "auth !== null",
+      ".write": "auth !== null"
+    },
+    "messages": {
+      ".read": "auth !== null",
+      ".write": "auth !== null"
+    },
+    "otherAmount": {
+      ".read": "auth !== null",
+      ".write": "auth !== null && auth.email === 'admin@game.prisoner'"
+    },
+    "paired": {
+      ".read": "auth !== null",
+      ".write": "auth !== null"
+    },
+    "presence": {
+      ".read": "auth !== null",
+      ".write": "auth !== null"
+    },
+    "rounds": {
+      ".read": "auth !== null && auth.email === 'admin@game.prisoner'",
+      ".write": "auth !== null && auth.email === 'admin@game.prisoner'"
+    },
+    "selection": {
+      ".read": "auth !== null",
+      ".write": "auth !== null"
+    }
   }
 }
