@@ -1,6 +1,32 @@
+'use strict';
+
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
+admin.initializeApp(functions.config().firebase);
+const express = require('express');
+const cookieParser = require('cookie-parser')();
+const cors = require('cors')({origin: true});
+const app = express();
 
+const validateFirebaseIdToken = (req, res, next) => {
+  if ((!req.headers.authorization || !req.headers.authorization.startsWith('Bearer ')) &&
+      !req.cookies.__session) {
+    res.status(403).send('Unauthorized');
+    return;
+  }
+  let idToken;
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+    idToken = req.headers.authorization.split('Bearer ')[1];
+  } else {
+    idToken = req.cookies.__session;
+  }
+  admin.auth().verifyIdToken(idToken).then(decodedIdToken => {
+    req.user = decodedIdToken;
+    next();
+  }).catch(error => {
+    res.status(403).send('Unauthorized');
+  });
+};
 const shuffle = (array) => {
   const shuffled = [...array];
   let m = shuffled.length;
@@ -15,20 +41,11 @@ const shuffle = (array) => {
   }
   return shuffled;
 };
-admin.initializeApp(functions.config().firebase);
-// GAME
-exports.game = functions.https.onRequest((req, res) => {
-  // TODO: WORRY ABOUT PROTECTING FUNCTION
-  const setCommands = [];
-  setCommands.push(admin.database().ref('selection').remove());
-  setCommands.push(admin.database().ref('messages').remove());
-  setCommands.push(admin.database().ref('paired').remove());
-  setCommands.push(admin.database().ref('joined').remove());
-  Promise.all(setCommands).then(() => admin.database().ref('gameState').set('JOIN').then(() => res.send({})));
-});
-// ROUND
-exports.round = functions.https.onRequest((req, res) => {
-  // TODO: WORRY ABOUT PROTECTING FUNCTION
+app.use(cors);
+app.use(cookieParser);
+app.use(validateFirebaseIdToken);
+app.get('/round', (req, res) => {
+  // TODO: VALIDATE WHICH USER
   // TODO: WORRY ABOUT EMPTY
   // TODO: WORRY ABOUT ODD
   // TODO: WORRY ABOUT DROPOUT
@@ -51,10 +68,9 @@ exports.round = functions.https.onRequest((req, res) => {
       }); // PAIRED REMOVE
     }); // GET JOINED
   }); // GAMESTATE UPDATE
-}); // ENDPOINT
-// SCORE
-exports.score = functions.https.onRequest((req, res) => {
-  // TODO: WORRY ABOUT PROTECTING FUNCTION
+});
+app.get('/score', (req, res) => {
+  // TODO: VALIDATE WHICH USER
   // TODO: WORRY ABOUT EMPTY
   // TODO: WORRY ABOUT ODD
   // TODO: WORRY ABOUT DROPOUT
@@ -105,5 +121,15 @@ exports.score = functions.https.onRequest((req, res) => {
       setScoreCommands.push(admin.database().ref(`joined/${joinedKey}`).set(score));
     }
     Promise.all(setScoreCommands).then(() => admin.database().ref('gameState').set('SCORE').then(() => res.send({})));
-  }); // ALL GET PARAMETERS
-}); // ENDPOINT
+  });
+});
+app.get('/game', (req, res) => {
+  // TODO: VALIDATE WHICH USER
+  const setCommands = [];
+  setCommands.push(admin.database().ref('selection').remove());
+  setCommands.push(admin.database().ref('messages').remove());
+  setCommands.push(admin.database().ref('paired').remove());
+  setCommands.push(admin.database().ref('joined').remove());
+  Promise.all(setCommands).then(() => admin.database().ref('gameState').set('JOIN').then(() => res.send({})));
+});
+exports.app = functions.https.onRequest(app);
