@@ -54,63 +54,43 @@ app.get('/round', (req, res) => {
   // TODO: WORRY ABOUT ODD
   // TODO: WORRY ABOUT DROPOUT
   // TODO: WORRY ABOUT MISSING SELECTIONS
-  admin.database().ref('gameState').set('STARTING').then(() => {
-    admin.database().ref('joined').once('value')
-    .then((snap) => {
-      const resetCommands = [];
-      const joinedKeys = Object.keys(snap.val());
-      resetCommands.push(admin.database().ref('selection').remove());
-      resetCommands.push(admin.database().ref('messages').remove());
-      admin.database().ref('paired').remove().then(() => {
-        for (let i = 0; i < joinedKeys.length; i += 2) {
-          const joinedKey = joinedKeys[i];
-          const nextJoinedKey = joinedKeys[i + 1];
-          resetCommands.push(admin.database().ref(`paired/${joinedKey}`).set(nextJoinedKey));
-          resetCommands.push(admin.database().ref(`paired/${nextJoinedKey}`).set(joinedKey));
-        }
-        Promise.all(resetCommands).then(() => admin.database().ref('gameState').set('DISCUSSING').then(() => res.send({})));
-      }); // PAIRED REMOVE
-    }); // GET JOINED
-  }); // GAMESTATE UPDATE
+  admin.database().ref('gameState').set('STARTING')
+  .then(() => Promise.all([
+    admin.database().ref('selection').remove(),
+    admin.database().ref('messages').remove(),
+    admin.database().ref('paired').remove(),
+  ]))
+  .then(() => admin.database().ref('joined').once('value'))
+  .then((snap) => {
+    const pairCommands = [];
+    const joinedKeys = Object.keys(snap.val());
+    for (let i = 0; i < joinedKeys.length; i += 2) {
+      const joinedKey = joinedKeys[i];
+      const nextJoinedKey = joinedKeys[i + 1];
+      pairCommands.push(admin.database().ref(`paired/${joinedKey}`).set(nextJoinedKey));
+      pairCommands.push(admin.database().ref(`paired/${nextJoinedKey}`).set(joinedKey));
+    }
+    return Promise.all(pairCommands);
+  })
+  .then(() => admin.database().ref('gameState').set('DISCUSSING'))
+  .then(() => res.send({}));
 });
 app.get('/score', (req, res) => {
   if (req.user.email !== EMAIL) {
     res.status(403).send('Unauthorized');
     return;
   }
-  // TODO: VALIDATE WHICH USER
   // TODO: WORRY ABOUT EMPTY
   // TODO: WORRY ABOUT ODD
   // TODO: WORRY ABOUT DROPOUT
   // TODO: WORRY ABOUT MISSING SELECTIONS
-  // GET SCORING PARAMETERS
-  const commands = [];
-  // AMOUNT
-  commands.push(admin.database().ref('amount').once('value')
-  .then((snap) => {
-    return snap.val();
-  }));
-  // OTHER_AMOUNT
-  commands.push(admin.database().ref('otherAmount').once('value')
-  .then((snap) => {
-    return snap.val();
-  }));
-  // JOINED
-  commands.push(admin.database().ref('joined').once('value')
-  .then((snap) => {
-    return snap.val();
-  }));
-  // PAIRED
-  commands.push(admin.database().ref('paired').once('value')
-  .then((snap) => {
-    return snap.val();
-  }));
-  // SELECTION
-  commands.push(admin.database().ref('selection').once('value')
-  .then((snap) => {
-    return snap.val();
-  }));
-  Promise.all(commands)
+  Promise.all([
+    admin.database().ref('amount').once('value').then(snap => snap.val()),
+    admin.database().ref('otherAmount').once('value').then(snap => snap.val()),
+    admin.database().ref('joined').once('value').then(snap => snap.val()),
+    admin.database().ref('paired').once('value').then(snap => snap.val()),
+    admin.database().ref('selection').once('value').then(snap => snap.val()),
+  ])
   .then(([
     amount,
     otherAmount,
@@ -135,27 +115,33 @@ app.get('/score', (req, res) => {
       if (selection[paired[joinedKey]]) score += otherAmount;
       setScoreCommands.push(admin.database().ref(`joined/${joinedKey}`).set(score));
     }
-    // RECORD ROUND
-    setScoreCommands.push(admin.database().ref('rounds').push({
-      amount,
-      otherAmount,
-      cooperate,
-      not,
-    }));
-    Promise.all(setScoreCommands).then(() => admin.database().ref('gameState').set('SCORE').then(() => res.send({})));
-  });
+    return Promise.all([
+      Promise.resolve({
+        amount,
+        otherAmount,
+        cooperate,
+        not,
+      }),
+      ...setScoreCommands
+    ])
+  })
+  .then(([scores,]) => admin.database().ref('rounds').push(scores))
+  .then(() => admin.database().ref('gameState').set('SCORE'))
+  .then(() => res.send({}));
 });
 app.get('/game', (req, res) => {
   if (req.user.email !== EMAIL) {
     res.status(403).send('Unauthorized');
     return;
   }
-  const setCommands = [];
-  setCommands.push(admin.database().ref('selection').remove());
-  setCommands.push(admin.database().ref('messages').remove());
-  setCommands.push(admin.database().ref('paired').remove());
-  setCommands.push(admin.database().ref('joined').remove());
-  setCommands.push(admin.database().ref('rounds').remove());
-  Promise.all(setCommands).then(() => admin.database().ref('gameState').set('JOIN').then(() => res.send({})));
+  Promise.all([
+    admin.database().ref('selection').remove(),
+    admin.database().ref('messages').remove(),
+    admin.database().ref('paired').remove(),
+    admin.database().ref('joined').remove(),
+    admin.database().ref('rounds').remove(),
+    admin.database().ref('gameState').set('JOIN'),
+  ])
+  .then(() => res.send({}));
 });
 exports.app = functions.https.onRequest(app);
